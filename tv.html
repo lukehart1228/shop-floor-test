@@ -136,19 +136,131 @@
 <button class="full" id="full" hidden>Full screen</button>
 
 <script>
-/* =====================================================================
-   THE TWO SETTINGS — the same two lines as upload.html.
-   Publishable key only. NEVER the secret key — this file is public.
-   The TV needs no login: it's opened with the TV link from the office
-   page (Setup → TV link). Without that link it shows nothing.
+/* ===== THE SITE: LIVE OR TEST, FROM THE ADDRESS (17 Nov 2026) =====================================
+   Word for word the same in index.html, tv.html, sw.js and the shared script (test_site_block.js checks it).
+   Live and test run the same files byte for byte; the folder this page was opened from says which it is:
+   a folder named shop-floor is live, one named shop-floor-test is test, anything else stops.
+   Both publishable keys are here; neither is secret. NEVER a secret key: these files are public.
+   Live and test share one GitHub name, so a browser would mix what they save. On test every name a page
+   saves under on the device ends in -test (sfName); live's names are unchanged. Plain old JavaScript:
+   the floor TV's browser reads this too. */
+var SF_SITES = {
+  live: { folder: "shop-floor", url: "https://fueyfxjxlicqekaqtydi.supabase.co", key: "sb_publishable_A5rEVQSSejSsQW7nhAX6iw_gNA5EZ9A", ending: "" },
+  test: { folder: "shop-floor-test", url: "https://qonmvdusaanbpgobzqep.supabase.co", key: "sb_publishable_ssHGsQ2IlMKJNU35kM9IAQ_JocxExB6", ending: "-test" }
+};
+var SF_TEST_WORDS = "TEST, not the real floor";
+var SF_TEST_FOLDER = "Production TEST";
+function sfSiteOf(path) {
+  var parts = String(path || "").split("/"), folder = parts.length > 1 ? parts[parts.length - 2] : "";
+  return folder === SF_SITES.live.folder ? "live" : folder === SF_SITES.test.folder ? "test" : null;
+}
+var SF_SITE = sfSiteOf(typeof location !== "undefined" ? location.pathname : "");
+var SUPABASE_URL = SF_SITE ? SF_SITES[SF_SITE].url : "";
+var SUPABASE_KEY = SF_SITE ? SF_SITES[SF_SITE].key : "";
+/** Every name this page saves under on the device: as it always was on live, ending -test on test. */
+function sfName(name) {
+  if (!SF_SITE) throw new Error("This page isn't at the live or the test address, so it keeps nothing on this device.");
+  return name + SF_SITES[SF_SITE].ending;
+}
+/** Why this page can't start at this address, in words; null when it can. */
+function sfSiteProblem() {
+  if (!SF_SITE) return "This page was opened from an address that is neither the live app (…/shop-floor/) nor the test app (…/shop-floor-test/), so it doesn't know which database to use. Open it from its usual link.";
+  if (SF_SITE === "test" && (SUPABASE_URL.indexOf("PASTE-") >= 0 || SUPABASE_KEY.indexOf("PASTE-") >= 0))
+    return "The test project's address and publishable key haven't been filled in yet. A chat puts them in the SF_SITES lines of index.html, tv.html, sw.js and the shared script.";
+  return null;
+}
+/** The second lock. answer: "live" or "test" (what the database says), "missing" (a database from before 17 Nov,
+ *  which can only be live) or null (couldn't ask: no connection). Words when this page must stop; null otherwise. */
+function sfDatabaseProblem(answer) {
+  if (SF_SITE === "test" && (answer === "live" || answer === "missing"))
+    return "This is the test app, but the database it reached doesn't say it is the test database. It has stopped and saves nothing. Tell Luke.";
+  if (SF_SITE === "live" && answer === "test")
+    return "This is the live app, but the database it reached is the test database. It has stopped and saves nothing. Tell Luke.";
+  return null;
+}
+/** Ask the database which it is (after sign-in; a login is needed) and call back with what sfDatabaseProblem takes. */
+function sfAskDatabase(db, done) {
+  try {
+    Promise.resolve(db.rpc("which_database")).then(function (r) {
+      if (r && !r.error && (r.data === "live" || r.data === "test")) return done(r.data);
+      var e = (r && r.error) || {}, words = String(e.message || "");
+      if (e.code === "PGRST202" || e.code === "42883" || /could not find the function|function .* does not exist/i.test(words)) return done("missing");
+      done(null);
+    }, function () { done(null); });
+  } catch (e) { done(null); }
+}
+/** Stop the page for good: sign this device out of that database and say why. */
+function sfStopPage(db, words) {
+  try { if (db && db.auth) Promise.resolve(db.auth.signOut({ scope: "local" })).then(function () {}, function () {}); } catch (e) {}
+  if (typeof document === "undefined" || !document.body) return;
+  document.body.innerHTML = "";
+  var box = document.createElement("div");
+  box.setAttribute("role", "alert");
+  box.style.cssText = "margin:40px auto; max-width:640px; padding:24px; border-radius:12px; background:#181D2E; color:#FFF4D5; font:18px/1.4 sans-serif";
+  box.innerHTML = "<h1 style=\"margin:0 0 12px; font-size:26px\">Stop: wrong database</h1><p style=\"margin:0\"></p>";
+  box.lastChild.textContent = words;
+  document.body.appendChild(box);
+}
+/** Once a login is signed in, check the database is the one this address means; stop the page if not. */
+function sfGuardDatabase(db) {
+  var asked = false;
+  function ask() {
+    if (asked) return;
+    asked = true;
+    sfAskDatabase(db, function (answer) {
+      var p = sfDatabaseProblem(answer);
+      if (p) sfStopPage(db, p);
+      else if (answer === null) asked = false;               // no connection: ask again at the next sign-in event
+    });
+  }
+  try {
+    if (db && db.auth && typeof db.auth.onAuthStateChange === "function")
+      db.auth.onAuthStateChange(function (ev, session) { if (session) setTimeout(ask, 0); });
+    else if (db && db.auth) Promise.resolve(db.auth.getSession()).then(function (r) { if (r && r.data && r.data.session) ask(); }, function () {});
+  } catch (e) {}
+}
+/** On test: the bar across the top of the page, in the header's own midnight and sawdust (no new colour).
+ *  Not inside the office's frames: the office above them carries it. */
+function sfTestBar() {
+  if (SF_SITE !== "test" || typeof document === "undefined" || !document.body || document.getElementById("sfTestBar")) return;
+  try { if (window.parent !== window && /[?&]embed=1\b/.test(location.search)) return; } catch (e) {}
+  var css = document.createElement("style");
+  css.textContent = "#sfTestBar{position:sticky; top:0; z-index:2147483000; height:24px; line-height:24px; text-align:center;"
+    + " background:#FFF4D5; color:#181D2E; border-bottom:2px solid #181D2E; font:700 14px/24px sans-serif; letter-spacing:.06em}"
+    + " body>.top, body>header{top:26px !important}"
+    + " @media print{html body>#sfTestBar{display:block !important; position:static !important}}";
+  document.head.appendChild(css);
+  var bar = document.createElement("div");
+  bar.id = "sfTestBar"; bar.setAttribute("role", "note"); bar.textContent = SF_TEST_WORDS;
+  document.body.insertBefore(bar, document.body.firstChild);
+  document.title = "TEST · " + document.title;
+}
+/** On test, a folder the app saves into must be named Production TEST; words when this one can't be used, else null. */
+function sfFolderProblem(folderName) {
+  if (SF_SITE !== "test" || folderName === SF_TEST_FOLDER) return null;
+  return "This is the test app, so it saves only into a folder named " + SF_TEST_FOLDER + ", never the real Production folder, the backup drive, Claudes Shop System Folder or PD - POs. Make a folder named " + SF_TEST_FOLDER + " outside Production and choose that. Nothing was changed.";
+}
+/** On test, every PDF this app makes says so: a band across the top of each page. On live the PDF is untouched. */
+function sfMarkPdf(PDFLib, doc) {
+  if (SF_SITE !== "test") return Promise.resolve(doc);
+  return doc.embedFont(PDFLib.StandardFonts.HelveticaBold).then(function (font) {
+    var pages = doc.getPages(), i, pg, w, h;
+    for (i = 0; i < pages.length; i++) {
+      pg = pages[i]; w = pg.getWidth(); h = pg.getHeight();
+      pg.drawRectangle({ x: 0, y: h - 20, width: w, height: 20, color: PDFLib.rgb(1, 0.957, 0.835) });
+      pg.drawText(SF_TEST_WORDS, { x: 14, y: h - 14, size: 11, font: font, color: PDFLib.rgb(0.094, 0.114, 0.18) });
+    }
+    doc.setTitle("TEST · " + (doc.getTitle() || ""));
+    return doc;
+  });
+}
+/* ===== END OF THE SITE BLOCK ===== */
 
-   This page makes one request to the database and needs no library,
-   so it runs on older smart-TV browsers.
-   ===================================================================== */
-var SUPABASE_URL = "https://fueyfxjxlicqekaqtydi.supabase.co";
-var SUPABASE_KEY = "sb_publishable_A5rEVQSSejSsQW7nhAX6iw_gNA5EZ9A";
+/* The TV needs no login: it's opened with the TV link from the office page (Setup → TV link). Without that
+   link it shows nothing. This page makes one request to the database and needs no library, so it runs on
+   older smart-TV browsers. Its second lock (the database says live or test) comes in that one request. */
 
-var TV_VERSION = "2026-10-20.1";
+var TV_VERSION = "2026-11-17.1";
 var REFRESH_SECONDS = 30;     // how often the numbers are fetched
 var HIDE_AFTER_SECONDS = 90;  // with no connection this long, the numbers are hidden rather than shown stale
 var PICTURE_SECONDS = 20;     // in its new home: how long each picture stays
@@ -158,6 +270,8 @@ var PICTURE_FETCHES_PER_HOUR = 30;   // each picture is fetched once and kept; t
 /* ---- core: no screen code in here, so it can be tested on its own ---- */
 
 function keyProblem(url, key) {
+  var site = sfSiteProblem();                   // 17 Nov: the address first (neither live nor test, or test not filled in yet)
+  if (site) return { secret: false, text: site };
   if (!url || !key || url.indexOf("PASTE-") >= 0 || key.indexOf("PASTE-") >= 0)
     return { secret: false, text: "The project address and key haven't been filled in yet. Copy the two SUPABASE lines from upload.html into this file." };
   var secret = { secret: true, text: "This is the SECRET key, not the publishable one. Take it out of the file now and use the publishable key. If this file was already put on GitHub with it, create a new secret key in Supabase so the old one stops working." };
@@ -347,10 +461,11 @@ if (typeof document !== "undefined") (function () {
   var app = document.getElementById("app");
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   var store = {
-    get: function (k) { try { return localStorage.getItem("sftv_" + k); } catch (e) { return null; } },
-    set: function (k, v) { try { if (v === null) localStorage.removeItem("sftv_" + k); else localStorage.setItem("sftv_" + k, v); } catch (e) {} },
+    get: function (k) { try { return localStorage.getItem(sfName("sftv_" + k)); } catch (e) { return null; } },
+    set: function (k, v) { try { if (v === null) localStorage.removeItem(sfName("sftv_" + k)); else localStorage.setItem(sfName("sftv_" + k), v); } catch (e) {} },
   };
   function msg(title, text) { app.className = ""; app.innerHTML = '<div class="msgscreen"><h1>' + esc(title) + '</h1><p>' + esc(text) + '</p></div>'; }
+  sfTestBar();                                  // 17 Nov: on test only, TEST, not the real floor
 
   // 1rem = 1% of the height of a 16:9 picture that fits the screen
   function sizeUnits() {
@@ -541,12 +656,15 @@ if (typeof document !== "undefined") (function () {
     }
   }
 
+  var stopped = false;                          // 17 Nov: the wrong database for this address; nothing more is fetched
   function refresh() {
-    if (busy) return; busy = true;
+    if (busy || stopped) return; busy = true;
     fetchSnapshot(function (err, data) {
       busy = false;
       if (err || !data) { failing = true; return draw(); }
       if (data.ok === false) { store.set("key", null); return msg("This TV link doesn't work any more", data.reason); }
+      var wrong = sfDatabaseProblem(data.site || "missing");     // a database from before 17 Nov sends no site: it can only be live
+      if (wrong) { stopped = true; snap = null; return msg("Stop: wrong database", wrong); }
       snap = data; lastOkAt = Date.now(); failing = false;
       for (var id in pics) if (pics[id] === null) delete pics[id];     // a refused picture gets one more try per snapshot, inside the hour's budget
       draw();

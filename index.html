@@ -624,15 +624,128 @@
 <!-- the Supabase library, checked: the browser refuses it if even one byte differs from the published file -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
 <script>
-/* =====================================================================
-   THE TWO SETTINGS — the same two lines as upload.html.
-   Publishable key only. NEVER the secret key — this file is public.
-   ===================================================================== */
-const SUPABASE_URL = "https://fueyfxjxlicqekaqtydi.supabase.co";
-const SUPABASE_KEY = "sb_publishable_A5rEVQSSejSsQW7nhAX6iw_gNA5EZ9A";
+/* ===== THE SITE: LIVE OR TEST, FROM THE ADDRESS (17 Nov 2026) =====================================
+   Word for word the same in index.html, tv.html, sw.js and the shared script (test_site_block.js checks it).
+   Live and test run the same files byte for byte; the folder this page was opened from says which it is:
+   a folder named shop-floor is live, one named shop-floor-test is test, anything else stops.
+   Both publishable keys are here; neither is secret. NEVER a secret key: these files are public.
+   Live and test share one GitHub name, so a browser would mix what they save. On test every name a page
+   saves under on the device ends in -test (sfName); live's names are unchanged. Plain old JavaScript:
+   the floor TV's browser reads this too. */
+var SF_SITES = {
+  live: { folder: "shop-floor", url: "https://fueyfxjxlicqekaqtydi.supabase.co", key: "sb_publishable_A5rEVQSSejSsQW7nhAX6iw_gNA5EZ9A", ending: "" },
+  test: { folder: "shop-floor-test", url: "https://qonmvdusaanbpgobzqep.supabase.co", key: "sb_publishable_ssHGsQ2IlMKJNU35kM9IAQ_JocxExB6", ending: "-test" }
+};
+var SF_TEST_WORDS = "TEST, not the real floor";
+var SF_TEST_FOLDER = "Production TEST";
+function sfSiteOf(path) {
+  var parts = String(path || "").split("/"), folder = parts.length > 1 ? parts[parts.length - 2] : "";
+  return folder === SF_SITES.live.folder ? "live" : folder === SF_SITES.test.folder ? "test" : null;
+}
+var SF_SITE = sfSiteOf(typeof location !== "undefined" ? location.pathname : "");
+var SUPABASE_URL = SF_SITE ? SF_SITES[SF_SITE].url : "";
+var SUPABASE_KEY = SF_SITE ? SF_SITES[SF_SITE].key : "";
+/** Every name this page saves under on the device: as it always was on live, ending -test on test. */
+function sfName(name) {
+  if (!SF_SITE) throw new Error("This page isn't at the live or the test address, so it keeps nothing on this device.");
+  return name + SF_SITES[SF_SITE].ending;
+}
+/** Why this page can't start at this address, in words; null when it can. */
+function sfSiteProblem() {
+  if (!SF_SITE) return "This page was opened from an address that is neither the live app (…/shop-floor/) nor the test app (…/shop-floor-test/), so it doesn't know which database to use. Open it from its usual link.";
+  if (SF_SITE === "test" && (SUPABASE_URL.indexOf("PASTE-") >= 0 || SUPABASE_KEY.indexOf("PASTE-") >= 0))
+    return "The test project's address and publishable key haven't been filled in yet. A chat puts them in the SF_SITES lines of index.html, tv.html, sw.js and the shared script.";
+  return null;
+}
+/** The second lock. answer: "live" or "test" (what the database says), "missing" (a database from before 17 Nov,
+ *  which can only be live) or null (couldn't ask: no connection). Words when this page must stop; null otherwise. */
+function sfDatabaseProblem(answer) {
+  if (SF_SITE === "test" && (answer === "live" || answer === "missing"))
+    return "This is the test app, but the database it reached doesn't say it is the test database. It has stopped and saves nothing. Tell Luke.";
+  if (SF_SITE === "live" && answer === "test")
+    return "This is the live app, but the database it reached is the test database. It has stopped and saves nothing. Tell Luke.";
+  return null;
+}
+/** Ask the database which it is (after sign-in; a login is needed) and call back with what sfDatabaseProblem takes. */
+function sfAskDatabase(db, done) {
+  try {
+    Promise.resolve(db.rpc("which_database")).then(function (r) {
+      if (r && !r.error && (r.data === "live" || r.data === "test")) return done(r.data);
+      var e = (r && r.error) || {}, words = String(e.message || "");
+      if (e.code === "PGRST202" || e.code === "42883" || /could not find the function|function .* does not exist/i.test(words)) return done("missing");
+      done(null);
+    }, function () { done(null); });
+  } catch (e) { done(null); }
+}
+/** Stop the page for good: sign this device out of that database and say why. */
+function sfStopPage(db, words) {
+  try { if (db && db.auth) Promise.resolve(db.auth.signOut({ scope: "local" })).then(function () {}, function () {}); } catch (e) {}
+  if (typeof document === "undefined" || !document.body) return;
+  document.body.innerHTML = "";
+  var box = document.createElement("div");
+  box.setAttribute("role", "alert");
+  box.style.cssText = "margin:40px auto; max-width:640px; padding:24px; border-radius:12px; background:#181D2E; color:#FFF4D5; font:18px/1.4 sans-serif";
+  box.innerHTML = "<h1 style=\"margin:0 0 12px; font-size:26px\">Stop: wrong database</h1><p style=\"margin:0\"></p>";
+  box.lastChild.textContent = words;
+  document.body.appendChild(box);
+}
+/** Once a login is signed in, check the database is the one this address means; stop the page if not. */
+function sfGuardDatabase(db) {
+  var asked = false;
+  function ask() {
+    if (asked) return;
+    asked = true;
+    sfAskDatabase(db, function (answer) {
+      var p = sfDatabaseProblem(answer);
+      if (p) sfStopPage(db, p);
+      else if (answer === null) asked = false;               // no connection: ask again at the next sign-in event
+    });
+  }
+  try {
+    if (db && db.auth && typeof db.auth.onAuthStateChange === "function")
+      db.auth.onAuthStateChange(function (ev, session) { if (session) setTimeout(ask, 0); });
+    else if (db && db.auth) Promise.resolve(db.auth.getSession()).then(function (r) { if (r && r.data && r.data.session) ask(); }, function () {});
+  } catch (e) {}
+}
+/** On test: the bar across the top of the page, in the header's own midnight and sawdust (no new colour).
+ *  Not inside the office's frames: the office above them carries it. */
+function sfTestBar() {
+  if (SF_SITE !== "test" || typeof document === "undefined" || !document.body || document.getElementById("sfTestBar")) return;
+  try { if (window.parent !== window && /[?&]embed=1\b/.test(location.search)) return; } catch (e) {}
+  var css = document.createElement("style");
+  css.textContent = "#sfTestBar{position:sticky; top:0; z-index:2147483000; height:24px; line-height:24px; text-align:center;"
+    + " background:#FFF4D5; color:#181D2E; border-bottom:2px solid #181D2E; font:700 14px/24px sans-serif; letter-spacing:.06em}"
+    + " body>.top, body>header{top:26px !important}"
+    + " @media print{html body>#sfTestBar{display:block !important; position:static !important}}";
+  document.head.appendChild(css);
+  var bar = document.createElement("div");
+  bar.id = "sfTestBar"; bar.setAttribute("role", "note"); bar.textContent = SF_TEST_WORDS;
+  document.body.insertBefore(bar, document.body.firstChild);
+  document.title = "TEST · " + document.title;
+}
+/** On test, a folder the app saves into must be named Production TEST; words when this one can't be used, else null. */
+function sfFolderProblem(folderName) {
+  if (SF_SITE !== "test" || folderName === SF_TEST_FOLDER) return null;
+  return "This is the test app, so it saves only into a folder named " + SF_TEST_FOLDER + ", never the real Production folder, the backup drive, Claudes Shop System Folder or PD - POs. Make a folder named " + SF_TEST_FOLDER + " outside Production and choose that. Nothing was changed.";
+}
+/** On test, every PDF this app makes says so: a band across the top of each page. On live the PDF is untouched. */
+function sfMarkPdf(PDFLib, doc) {
+  if (SF_SITE !== "test") return Promise.resolve(doc);
+  return doc.embedFont(PDFLib.StandardFonts.HelveticaBold).then(function (font) {
+    var pages = doc.getPages(), i, pg, w, h;
+    for (i = 0; i < pages.length; i++) {
+      pg = pages[i]; w = pg.getWidth(); h = pg.getHeight();
+      pg.drawRectangle({ x: 0, y: h - 20, width: w, height: 20, color: PDFLib.rgb(1, 0.957, 0.835) });
+      pg.drawText(SF_TEST_WORDS, { x: 14, y: h - 14, size: 11, font: font, color: PDFLib.rgb(0.094, 0.114, 0.18) });
+    }
+    doc.setTitle("TEST · " + (doc.getTitle() || ""));
+    return doc;
+  });
+}
+/* ===== END OF THE SITE BLOCK ===== */
 // This page's version. Change it with every edit (date, then .1, .2 … for more than one that day).
 // Each device reports it when it opens; see  select * from devices();  in the SQL Editor.
-const PAGE_VERSION = "2026-11-17.1";
+const PAGE_VERSION = "2026-11-17.2";
 
 
 /* ---- core: no screen code in here, so it can be tested on its own ---- */
@@ -662,6 +775,8 @@ const OLD_TAB = { problems: "issues", log: "tasks" };
 const PHOTO_MAX_EACH = 3;          // photos on one defect, problem or reply, from the tablet
 
 function keyProblem(url, key) {
+  const site = sfSiteProblem();                 // 17 Nov: the address first (neither live nor test, or test not filled in yet)
+  if (site) return { secret: false, text: site };
   if (!url || !key || url.includes("PASTE-") || key.includes("PASTE-"))
     return { secret: false, text: "The project address and key haven't been filled in yet. Copy the two SUPABASE lines from upload.html into this file (walkthrough 4, step 2)." };
   const secret = { secret: true, text: "This is the SECRET key, not the publishable one. It bypasses every security rule, and this file is public. Take it out of the file now and use the publishable key — the same one upload.html has. If this file was already put on GitHub with it, create a new secret key in Supabase so the old one stops working." };
@@ -1647,8 +1762,8 @@ if (typeof document !== "undefined") (function () {
   const app = document.getElementById("app");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("sf_" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("sf_" + k, JSON.stringify(v)); } catch (e) {} },
+    get(k, d) { try { const v = localStorage.getItem(sfName("sf_" + k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(sfName("sf_" + k), JSON.stringify(v)); } catch (e) {} },
   };
 
   const problem = keyProblem(SUPABASE_URL, SUPABASE_KEY);
@@ -1658,6 +1773,8 @@ if (typeof document !== "undefined") (function () {
   }
 
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   const S = {
     me: null, depts: [], dept: store.get("dept", null), tab: OLD_TAB[store.get("tab", "work")] || store.get("tab", "work"), queueMode: "ready",
     rows: [], rowsAt: null, fromCache: false,
@@ -1706,7 +1823,7 @@ if (typeof document !== "undefined") (function () {
     let dbp = null;
     const open = () => dbp || (dbp = new Promise((res, rej) => {
       if (!window.indexedDB) return rej(new Error("no IndexedDB"));
-      const r = window.indexedDB.open("shop-floor-photos", 1);
+      const r = window.indexedDB.open(sfName("shop-floor-photos"), 1);
       r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "id" });
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     }));
@@ -2060,7 +2177,7 @@ if (typeof document !== "undefined") (function () {
     const get = async () => { const { data, error } = await db.storage.from("deliveries").download(path); if (error) throw error; return data; };
     if ("caches" in window) {
       const key = new Request(location.origin + "/__delivery-files__/" + encodeURIComponent(path));
-      const cache = await caches.open("delivery-files-v1");
+      const cache = await caches.open(sfName("delivery-files-v1"));
       const hit = await cache.match(key);
       if (hit) blob = await hit.blob();
       if (!blob) { blob = await get(); await cache.put(key, new Response(blob, { headers: { "Content-Type": mime || blob.type || "application/octet-stream" } })); }
@@ -2333,7 +2450,7 @@ if (typeof document !== "undefined") (function () {
     let blob = null;
     if ("caches" in window) {
       const key = new Request(location.origin + "/__sheet-pages__/" + encodeURIComponent(path));
-      const cache = await caches.open("sheet-pages-v1");
+      const cache = await caches.open(sfName("sheet-pages-v1"));
       const hit = await cache.match(key);
       if (hit) blob = await hit.blob();
       if (!blob) {
@@ -2358,7 +2475,7 @@ if (typeof document !== "undefined") (function () {
   async function snipImage(path) {
     if (snipUrls.has(path)) return snipUrls.get(path);
     const key = "caches" in window ? new Request(location.origin + "/__sheet-snips__/" + encodeURIComponent(path)) : null;
-    const cache = key ? await caches.open("sheet-pages-v1") : null;
+    const cache = key ? await caches.open(sfName("sheet-pages-v1")) : null;
     const hit = cache ? await cache.match(key) : null;
     let blob = hit ? await hit.blob() : null;
     if (!blob) {
@@ -3343,7 +3460,7 @@ if (typeof document !== "undefined") (function () {
   const cacheName = (kind) => kind === "page" ? "sheet-pages-v1" : "delivery-files-v1";      // the same copies opening a trip keeps
   async function onPhone(kind, path) {
     if (!("caches" in window)) return false;
-    try { return !!(await (await caches.open(cacheName(kind))).match(keyFor(kind, path))); } catch (e) { return false; }
+    try { return !!(await (await caches.open(sfName(cacheName(kind)))).match(keyFor(kind, path))); } catch (e) { return false; }
   }
   /** Keep one file on the phone, fetched once: a page or delivery file already kept is never fetched again. */
   async function keepOnPhone(kind, path, mime) {
@@ -3351,7 +3468,7 @@ if (typeof document !== "undefined") (function () {
     if (!("caches" in window)) return false;
     const { data, error } = await db.storage.from(kind === "page" ? "work-orders" : "deliveries").download(path);
     if (error) throw error;
-    await (await caches.open(cacheName(kind))).put(keyFor(kind, path), new Response(data, { headers: { "Content-Type": kind === "page" ? "image/png" : (mime || data.type || "application/octet-stream") } }));
+    await (await caches.open(sfName(cacheName(kind)))).put(keyFor(kind, path), new Response(data, { headers: { "Content-Type": kind === "page" ? "image/png" : (mime || data.type || "application/octet-stream") } }));
     return true;
   }
   const isTripKind = (d) => d && (d.kind === "delivery" || d.kind === "dock");

@@ -156,10 +156,10 @@ h1 .jn{font-size:20px; font-weight:600; margin-left:10px}
 <main id="app"></main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
-/* Connection settings, the key check, the device report and the Feedback button are in sf-common-2026-10-05.1.js. */
-var PAGE_VERSION = "2026-11-04.2";          // this page's version: bump it with every change (it shows in select * from devices();)
+/* Connection settings, the key check, the device report and the Feedback button are in sf-common-2026-11-17.1.js. */
+var PAGE_VERSION = "2026-11-17.1";          // this page's version: bump it with every change (it shows in select * from devices();)
 (function () {
   const app = document.getElementById("app");
   const right = document.getElementById("right");
@@ -170,6 +170,8 @@ var PAGE_VERSION = "2026-11-04.2";          // this page's version: bump it with
     return;
   }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfEmbed("header .hrow");                                        // inside the office app: the office's header is above
   sfReportDevice(db, "status", PAGE_VERSION);
 

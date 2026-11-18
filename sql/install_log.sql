@@ -148,7 +148,8 @@ insert into sql_file_catalog (file, run_order, fingerprint, check_fn, replaces) 
   ('delivery_photos_open.sql', 60, 'unsent_on_phones',      'check_delivery_photos_open', '{photos.sql}'),
   ('two_day_rule.sql',      61, 'check_two_day_rule',      'check_two_day_rule',       '{off_supabase.sql,zip_drop.sql,short_names.sql}'),
   ('checks_clean.sql',      62, 'retire_placeholder',      'check_checks_clean',       '{office.sql,inventory.sql,pace.sql,onedrive_save.sql,connector_safety.sql,incomplete_deliveries.sql,job_status.sql}'),
-  ('partial_sends.sql',     63, 'send_pieces',             'check_partial_sends',      '{schema.sql,ready_issues.sql,send_routes.sql,handoff_recent.sql}')
+  ('partial_sends.sql',     63, 'send_pieces',             'check_partial_sends',      '{schema.sql,ready_issues.sql,send_routes.sql,handoff_recent.sql}'),
+  ('which_database.sql',    64, 'which_database',          'check_which_database',     '{tv_coming.sql,direct_counts_off.sql,arrow_pos.sql}')
 on conflict (file) do update set run_order = excluded.run_order, fingerprint = excluded.fingerprint, check_fn = excluded.check_fn, replaces = excluded.replaces;
 
 -- does the database already have this file's fingerprint?

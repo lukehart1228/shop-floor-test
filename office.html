@@ -332,10 +332,10 @@
 
 <!-- the Supabase library, checked: the browser refuses it if even one byte differs from the published file -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
 /* The two settings (project address, publishable key), the key check, the connection test, the id maker and the
-   Feedback button are in the shared file loaded above, sf-common-2026-10-05.1.js. */
+   Feedback button are in the shared file loaded above, sf-common-2026-11-17.1.js. */
 
 /* How long the office view waits, untouched, before asking for the PIN again. */
 const LOCK_AFTER_MINUTES = 15;
@@ -721,6 +721,7 @@ async function arrowPoPdf(PDFLib, po) {
   text(fit(h.issued_by, 195, 9, b), M + lw + 4, y - 11, 9, b);
   page.drawLine({ start: { x: M + lw, y: y - 15 }, end: { x: M + lw + 200, y: y - 15 }, thickness: .8, color: black });
   doc.setTitle(po.name || "Arrow PO"); doc.setCreator("Purposeful Design Production");
+  await sfMarkPdf(PDFLib, doc);                   // 17 Nov: on test, TEST across the top of every page
   return await doc.save({ useObjectStreams: false });
 }
 /** "Post.step" + 2 → "Post r2.step": a revised job file is filed beside the old one (3 Nov: was the drop date, 11 letters longer) */
@@ -1021,6 +1022,7 @@ async function buildSignedTicket(PDFLib, d, ticket, signature) {
     for (const ln of wrapText(d.customer_note, W, (s) => font.widthOfTextAtSize(s, 12))) { text(ln, L, y, 12); y -= 16; if (y < 70) break; }
   }
   text(`${d.project_id} · ${pk ? "pickup" : "delivery"} record`, L, 40, 9, font, grey);
+  await sfMarkPdf(PDFLib, doc);                   // 17 Nov: on test, TEST across the top of every page
   return await doc.save();
 }
 
@@ -1045,7 +1047,7 @@ function normProject(text) {
 
 /* ---- the screen ---- */
 /* ---- this build (25 Sep): menu, sync alert, find a job, the job page ---- */
-const OFFICE_VERSION = "2026-11-12.1";   // bump with every change (it shows in the ☰ menu and in select * from devices();)
+const OFFICE_VERSION = "2026-11-17.1";   // bump with every change (it shows in the ☰ menu and in select * from devices();)
 const SYNC_ALERT_MINUTES = 60;
 
 // Is the Monday sync healthy? last = the newest log row, good = the newest row that worked.
@@ -1114,8 +1116,8 @@ if (typeof document !== "undefined") (function () {
   const app = document.getElementById("app");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("sfo_" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("sfo_" + k, JSON.stringify(v)); } catch (e) {} },
+    get(k, d) { try { const v = localStorage.getItem(sfName("sfo_" + k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(sfName("sfo_" + k), JSON.stringify(v)); } catch (e) {} },
   };
 
   const problem = keyProblem(SUPABASE_URL, SUPABASE_KEY);
@@ -1125,6 +1127,8 @@ if (typeof document !== "undefined") (function () {
   }
 
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfFeedbackSetup({ db,
     page: () => S.section ? sectionOf(S.section).page : "office",
     version: () => S.section ? frameVersion(S.section) : OFFICE_VERSION,
@@ -2610,7 +2614,7 @@ if (typeof document !== "undefined") (function () {
     mem: new Map(),
     open() {
       if (!window.indexedDB) return Promise.resolve(null);
-      return this.p || (this.p = new Promise((res) => { const r = indexedDB.open("sf-save", 1);
+      return this.p || (this.p = new Promise((res) => { const r = indexedDB.open(sfName("sf-save"), 1);
         r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }));
     },
     async get(k) { const d = await this.open(); if (!d) return this.mem.get(k);
@@ -2648,6 +2652,8 @@ if (typeof document !== "undefined") (function () {
     let h;
     try { h = await window.showDirectoryPicker({ id: ({ od: "sf-onedrive", bk: "sf-backup", sys: "sf-system" })[which], mode: "readwrite" }); }
     catch (e) { if (e && e.name === "AbortError") return; S.msg = { ok: false, text: friendlyError(e) }; return render(); }
+    const notHere = sfFolderProblem(h.name);       // 17 Nov: on test, only a folder named Production TEST
+    if (notHere) { S.msg = { ok: false, text: notHere }; return render(); }
     if (which === "sys") {                         // Claudes Shop System Folder: the library and the Arrow POs (1 Nov)
       for (const k of ["od", "bk"]) {
         const o = S.save[k]; if (!o) continue;

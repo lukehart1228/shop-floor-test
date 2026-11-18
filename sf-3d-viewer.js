@@ -18,7 +18,7 @@
 (function (root) {
   "use strict";
   if (root.SF3D) return;
-  const VERSION = "2026-11-01.9";
+  const VERSION = "2026-11-17.1";
 
   // the libraries, pinned and checked (the same files and hashes as step.html, the test page)
   const LIBS = {
@@ -38,7 +38,7 @@
   const VIEW_KIND = "shop-floor-view", VIEW_FORMAT = 1;
   // the brand palette: --gray for every part, --midnight outlines, --orange for what you tap, --paper behind
   const COLORS = { part: 0xC2BAA0, edge: 0x181D2E, mark: 0xED5E0F, back: 0xEFEDE6, cap: 0x575C6E };
-  const KEEP = "design-views-v1";                    // this device's kept view files (not the offline helper's cache)
+  const KEEP = "design-views-v1";                    // this device's kept view files (not the offline helper's cache); kept under sfName(KEEP): -test on test (17 Nov)
   const now = () => (root.performance && performance.now ? performance.now() : Date.now());
 
   // ---------- small pieces ----------
@@ -169,11 +169,11 @@
   const keyOf = (path) => new Request(location.origin + "/__design-views__/" + encodeURIComponent(path));
   async function kept(path) {
     if (!("caches" in root) || !path) return null;
-    try { const hit = await (await caches.open(KEEP)).match(keyOf(path)); return hit ? await hit.blob() : null; } catch (e) { return null; }
+    try { const hit = await (await caches.open(sfName(KEEP))).match(keyOf(path)); return hit ? await hit.blob() : null; } catch (e) { return null; }
   }
   async function keep(path, blob) {
     if (!("caches" in root) || !path) return false;
-    try { await (await caches.open(KEEP)).put(keyOf(path), new Response(blob, { headers: { "Content-Type": "application/gzip" } })); return true; } catch (e) { return false; }
+    try { await (await caches.open(sfName(KEEP))).put(keyOf(path), new Response(blob, { headers: { "Content-Type": "application/gzip" } })); return true; } catch (e) { return false; }
   }
 
   /** One design (an item_designs row) → { view, from: kept|downloaded|made, bytes, ms }. The kept copy first (a view

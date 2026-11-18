@@ -151,9 +151,9 @@
 
 <!-- the Supabase library, checked: the browser refuses it if even one byte differs from the published file -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
-var PAGE_VERSION = "2026-11-04.2";          // this page's version: bump it with every change (it shows in select * from devices();)
+var PAGE_VERSION = "2026-11-17.1";          // this page's version: bump it with every change (it shows in select * from devices();)
 
 /* ---- core: no screen code in here, so it can be tested on its own ----
    The zip format is 11_SHOP_FLOOR_ZIP.md (format 1; format 2 with Design/; format 3, 3 Nov: Files/Metal, one folder per item
@@ -423,6 +423,8 @@ if (typeof document !== "undefined") (function () {
     $("configBody").textContent = problem.text; show("configProblem"); return;
   }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfEmbed("header");
   sfReportDevice(db, "drop", PAGE_VERSION);
   $("foot").textContent = `Project Handoff page ${PAGE_VERSION}. Zips follow 11_SHOP_FLOOR_ZIP.md, formats 1 to 3.`;

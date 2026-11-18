@@ -191,10 +191,10 @@
 <div id="app"></div>
 <!-- the Supabase library, checked: the browser refuses it if even one byte differs from the published file -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
 /* The two settings (project address, publishable key), the key check, the connection test, the id maker and the
-   Feedback button are in the shared file loaded above, sf-common-2026-10-05.1.js.
+   Feedback button are in the shared file loaded above, sf-common-2026-11-17.1.js.
    Purchasing (7 Nov; simpler 10 Nov. Design: the spec's Purchasing tab, "A simpler page"). Three tabs, by what the office
    comes to do, and Setup as a button:
      Buy      what the departments asked for on their tablets (it left Operations 10 Nov), then the POs: PO 00001 on and
@@ -206,7 +206,7 @@
    the data comes in from now on). A Purchases file is for loading past buys: it asks nothing, its new item names become
    items as it's added, and the page says so afterwards. Managers only.
    What's entered is the truth: PO lines, and buys with no PO from the Purchases file. */
-var PAGE_VERSION = "2026-11-11.1";          // this page's version: bump it with every change (it shows in select * from devices();)
+var PAGE_VERSION = "2026-11-17.1";          // this page's version: bump it with every change (it shows in select * from devices();)
 /* ---- core: no screen code in here, so it can be tested on its own ---- */
 const SCRAP_ALLOWANCE = 1.7;                 // the workbook's allowance: 1.7 bd ft bought for each bd ft in a top
 function isMissing(err) { return /could not find the function|schema cache|does not exist/i.test(String((err && err.message) || err || "")); }
@@ -411,6 +411,7 @@ async function arrowPoPdf(PDFLib, po) {
   text(fit(h.issued_by, 195, 9, b), M + lw + 4, y - 11, 9, b);
   page.drawLine({ start: { x: M + lw, y: y - 15 }, end: { x: M + lw + 200, y: y - 15 }, thickness: .8, color: black });
   doc.setTitle(po.name || "Arrow PO"); doc.setCreator("Purposeful Design Production");
+  await sfMarkPdf(PDFLib, doc);                   // 17 Nov: on test, TEST across the top of every page
   return await doc.save({ useObjectStreams: false });
 }
 /** "Post.step" + 2 → "Post r2.step": a revised job file is filed beside the old one (3 Nov: was the drop date, 11 letters longer) */
@@ -518,6 +519,7 @@ async function poPdf(PDFLib, po, logoBytes) {
   put("Authorized Signature: ________________________", X("C"), Xr("D"), Y(52), Yb(53), { bold: true, align: "center", valign: "center" });
   put(h.tax_line, X("C"), Xr("D"), Y(55), Yb(55), { bold: true, align: "center" });
   doc.setTitle(po.name || "PO"); doc.setCreator("Purposeful Design Production");
+  await sfMarkPdf(PDFLib, doc);                   // 17 Nov: on test, TEST across the top of every page
   return await doc.save({ useObjectStreams: false });
 }
 
@@ -940,8 +942,8 @@ if (typeof document !== "undefined") (function () {
   const app = document.getElementById("app"), tabsEl = document.getElementById("tabs"), meEl = document.getElementById("me");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("sfpu_" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("sfpu_" + k, JSON.stringify(v)); } catch (e) {} },
+    get(k, d) { try { const v = localStorage.getItem(sfName("sfpu_" + k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(sfName("sfpu_" + k), JSON.stringify(v)); } catch (e) {} },
   };
   const problem = keyProblem(SUPABASE_URL, SUPABASE_KEY);
   if (problem) {
@@ -949,6 +951,8 @@ if (typeof document !== "undefined") (function () {
     return;
   }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfEmbed("header .hrow");
   if (!SF_EMBEDDED) sfFeedbackSetup({ db, page: "purchasing", version: PAGE_VERSION, mount: "header .hrow" });
   sfReportDevice(db, "purchasing", PAGE_VERSION);
@@ -976,7 +980,7 @@ if (typeof document !== "undefined") (function () {
   // ---------- the PD - POs folder on this computer (remembered in this browser) ----------
   const kv = {
     open() { if (!window.indexedDB) return Promise.resolve(null);
-      return this.p || (this.p = new Promise((res) => { const r = indexedDB.open("sf-purchasing", 1);
+      return this.p || (this.p = new Promise((res) => { const r = indexedDB.open(sfName("sf-purchasing"), 1);
         r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); })); },
     async get(k) { const d = await this.open(); if (!d) return undefined;
       return new Promise((res) => { const t = d.transaction("kv").objectStore("kv").get(k); t.onsuccess = () => res(t.result); t.onerror = () => res(undefined); }); },
@@ -992,6 +996,8 @@ if (typeof document !== "undefined") (function () {
     let h;
     try { h = await window.showDirectoryPicker({ id: "sf-pd-pos", mode: "readwrite" }); }
     catch (e) { if (e && e.name === "AbortError") return; S.msg = { ok: false, text: friendlyError(e) }; return render(); }
+    const notHere = sfFolderProblem(h.name);       // 17 Nov: on test, only a folder named Production TEST
+    if (notHere) { S.msg = { ok: false, text: notHere }; return render(); }
     await kv.set("pd-pos", h); S.folder = h; S.perm = "granted";
     S.msg = { ok: true, text: `PD - POs folder chosen: ${h.name}. POs made here are filed in it as PDFs.` };
     render(); fileWaiting();

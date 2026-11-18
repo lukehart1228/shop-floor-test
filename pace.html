@@ -133,11 +133,11 @@
 
 <!-- the Supabase library, checked: the browser refuses it if even one byte differs from the published file -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
 /* The two settings (project address, publishable key), the key check, the connection test, the id maker and the
-   Feedback button are in the shared file loaded above, sf-common-2026-10-05.1.js. */
-var PAGE_VERSION = "2026-11-11.1";          // this page's version: bump it with every change (it shows in select * from devices();)
+   Feedback button are in the shared file loaded above, sf-common-2026-11-17.1.js. */
+var PAGE_VERSION = "2026-11-17.1";          // this page's version: bump it with every change (it shows in select * from devices();)
 
 
 /* ---- core: no screen code in here, so it can be tested on its own ---- */
@@ -205,8 +205,8 @@ if (typeof document !== "undefined") (function () {
   const app = document.getElementById("app"), tabsEl = document.getElementById("tabs"), meEl = document.getElementById("me");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("sfp_" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("sfp_" + k, JSON.stringify(v)); } catch (e) {} },
+    get(k, d) { try { const v = localStorage.getItem(sfName("sfp_" + k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(sfName("sfp_" + k), JSON.stringify(v)); } catch (e) {} },
   };
   const problem = keyProblem(SUPABASE_URL, SUPABASE_KEY);
   if (problem) {
@@ -214,6 +214,8 @@ if (typeof document !== "undefined") (function () {
     return;
   }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfEmbed("header .hrow");                                        // inside the office app: the office's header is above
   if (!SF_EMBEDDED) sfFeedbackSetup({ db, page: "pace", version: PAGE_VERSION, mount: "header .hrow" });
   sfReportDevice(db, "pace", PAGE_VERSION);

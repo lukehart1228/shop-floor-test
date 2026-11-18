@@ -87,9 +87,9 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-<script src="sf-common-2026-10-05.1.js"></script>
+<script src="sf-common-2026-11-17.1.js"></script>
 <script>
-var PAGE_VERSION = "2026-11-04.1";          // this page's version: bump it with every change (it shows in select * from devices();)
+var PAGE_VERSION = "2026-11-17.1";          // this page's version: bump it with every change (it shows in select * from devices();)
 
 /* The Homag router's and the Bend-Tech's computers (Chrome). Files sent from the Prototype lab wait here; Get files saves
    them into the folder chosen on this computer, checks each against its fingerprint, records the pickup, and clears the
@@ -107,6 +107,8 @@ if (typeof document !== "undefined") (function () {
   const problem = keyProblem(SUPABASE_URL, SUPABASE_KEY);
   if (problem) { $("configTitle").textContent = problem.secret ? "Stop — wrong key in this file" : "This page isn’t set up yet"; $("configBody").textContent = problem.text; show("configProblem"); return; }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sfGuardDatabase(db);                          // 17 Nov: once someone signs in, the database must be the one this address means
+  sfTestBar();                                  // on test only: TEST, not the real floor
   sfReportDevice(db, "machine", PAGE_VERSION);
 
   let machine = null, rows = [], busy = false, dir = null, perm = null;
@@ -121,7 +123,7 @@ if (typeof document !== "undefined") (function () {
   }
 
   // ---------- the folder on this computer, remembered between visits ----------
-  const idb = { p: null, open() { return this.p || (this.p = new Promise((res, rej) => { const r = indexedDB.open("sf-machine", 1);
+  const idb = { p: null, open() { return this.p || (this.p = new Promise((res, rej) => { const r = indexedDB.open(sfName("sf-machine"), 1);
       r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
     async get(k) { const d = await this.open(); return new Promise((res) => { const r = d.transaction("kv").objectStore("kv").get(k); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); },
     async set(k, v) { const d = await this.open(); return new Promise((res) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(true); t.onerror = () => res(false); }); } };
@@ -137,7 +139,9 @@ if (typeof document !== "undefined") (function () {
     else h = `<div class="folder"><span>Files go into <b>${esc(dir.name)}</b>${SORTED[machine] ? `, sorted into <b>hundreds › job › item</b> folders` : ""}</span><button class="link" id="pickBtn">Choose another folder</button></div>`;
     $("folderCard").innerHTML = h;
     const pb = $("pickBtn"); if (pb) pb.onclick = async () => {
-      try { const h2 = await window.showDirectoryPicker({ id: "sf-machine", mode: "readwrite" }); await idb.set("folder-" + machine, h2); dir = h2; perm = await dir.queryPermission({ mode: "readwrite" }); }
+      try { const h2 = await window.showDirectoryPicker({ id: "sf-machine", mode: "readwrite" });
+            const notHere = sfFolderProblem(h2.name); if (notHere) { alert(notHere); return; }   // 17 Nov: on test, only a folder named Production TEST
+            await idb.set("folder-" + machine, h2); dir = h2; perm = await dir.queryPermission({ mode: "readwrite" }); }
       catch (e) { if (e && e.name !== "AbortError") alert("That folder couldn’t be used: " + (e.message || e)); }
       renderFolder(); renderWaiting();
     };
